@@ -8,7 +8,7 @@ format:
   html:
     other-links:
       - text: Video-Tutorial
-        href: https://www.youtube.com/watch?v=paph9lxPywY&t=17s
+        href: https://www.youtube.com/watch?v=paph9lxPywY
     code-links:
       - text: Datos Latinobarometro
         icon: file-code
