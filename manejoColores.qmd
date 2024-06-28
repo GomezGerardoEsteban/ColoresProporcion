@@ -1,0 +1,496 @@
+---
+title: "Visualización de datos, manejo de colores en gráficos de proporción"
+subtitle: ""
+author: "Gerardo Esteban, Gómez-Santiago"
+date: "Jane 26, 2024"
+toc: true
+format: 
+  html:
+    other-links:
+      - text: Video-Tutorial
+        href: https://www.youtube.com/watch?v=paph9lxPywY&t=17s
+    code-links:
+      - text: Datos Latinobarometro
+        icon: file-code
+        href: https://www.latinobarometro.org/latContents.jsp
+    theme: default
+    html-math-method: katex
+    code-tools: true
+    self-contained: true
+execute:
+  warning: false
+---
+
+## Introducción
+
+La visualización de datos es una habilidad cada vez más necesaria al momento de analizar, procesar y comunicar información, su relevancia ha crecido en ámbitos académicos y la mayor disponibilidad de todo tipo de datos la ha convertido en un área de interés para el sector público y privado.\
+Un gráfico bien hecho tiene efectos significativos en quien recibe el mensaje, evita confusiones en lo que se quiere transmitir y reduce la longitud del mensaje.
+
+El objetivo de este tutorial es utilizar dos funcionalidades del **ggplot** al momento de manipular colores en gráficos de barras que reflejan proporciones, si bien el ejemplo puede parecer muy específico, es fácil de replicar al análisis de variables que puedan ser reagrupadas en *supracategorias*, el ejemplo con el que vamos a trabajar es la repuesta a la siguiente pregunta de la encuesta Latinobarometro 2023.
+
+![Pregunta Latinobarometro](imagenLatinobarometro.png){width=120%}
+
+La lógica es simple, en lugar de utilizar un color diferente para cada una de las 5 categorías (para lo que requeriríamos 5 colores diferentes), podemos adjudicar el color rojo a las respuestas *peor*, el color azul a las respuestas neutras (*Igual*) y el color verde a las respuestas *mejor* y utilizar la **intensidad** de los colores para reflejar el grado de acuerdo.
+
+El objetivo es pasar de este gráfico en el que se comparan las proporciones de respuesta entre México y Colombia:
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false 
+
+
+rm(list = ls())
+
+library(tidyverse)
+library(patchwork)
+library(haven)
+
+base <- read_dta("Latinobarometro_2023_Esp_Stata_v1_0.dta")
+
+# unique(base$idenpa)
+# Colombia 170
+# Mexico 484
+
+base_ <- base[base$idenpa %in% c(170, 484), ]
+
+base_graph <- base_ %>% 
+  group_by(idenpa, P7ST) %>%
+  tally() %>% 
+  filter(P7ST > 0) %>% 
+  ungroup() %>% 
+  group_by(idenpa) %>% 
+  mutate(porcentaje = n/sum(n))
+  
+base_graph$respuesta <- factor(case_when(
+  base_graph$P7ST == 1~ "Mucho mejor",
+  base_graph$P7ST == 2~ "Un poco mejor",
+  base_graph$P7ST == 3~ "Igual",
+  base_graph$P7ST == 4~ "Un poco peor",
+  base_graph$P7ST == 5~ "Mucho peor"),
+  levels = c("Mucho mejor",
+             "Un poco mejor",
+             "Igual",
+             "Un poco peor",
+             "Mucho peor"),
+  labels = c("Mucho mejor",
+             "Un poco mejor",
+             "Igual",
+             "Un poco peor",
+             "Mucho peor"))
+
+
+base_graph$categoria <- factor(case_when(
+  base_graph$respuesta == "Mucho mejor" ~ 0,
+  base_graph$respuesta == "Un poco mejor" ~ 0,
+  base_graph$respuesta == "Igual" ~ 1,
+  base_graph$respuesta == "Un poco peor" ~ 2,
+  base_graph$respuesta == "Mucho peor" ~ 2))
+
+
+base_graph$pais <- ifelse(base_graph$idenpa == 170, "Colombia", "México")
+
+
+base_graph %>% 
+  ggplot(mapping = aes(x = pais, y = porcentaje, fill = respuesta)) +
+  geom_col() +
+  labs(title = "Proporción de respuesta a ¿como va a estar la economía\nen los proximos 12 meses?",
+       x = NULL,
+       y = "Porcentaje",
+       fill = "Respuesta") +
+  theme_test() +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        plot.subtitle = element_text(hjust = 0.5, size = 8),
+        plot.caption = element_text(size=6, hjust=0.0, face="italic", color="black"),
+        axis.text.x = element_text(size = 9, angle = 0),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_text(size = 9),
+        axis.title.x = element_text(size = 7),
+        legend.title = element_text(size=9, hjust = 0.5), 
+        legend.text = element_text(size=8))
+  
+
+```
+Ha algo como esto: 
+
+```{r}
+#| message: false
+#| warning: false
+#| echo: false 
+
+
+alpha_max <- 1
+alpha_min <- 0.8
+alpha_vals <- c(seq(alpha_max, alpha_min, length.out = 2),
+                alpha_min,
+                seq(alpha_min, alpha_max, length.out = 2))
+
+base_graph <- base_graph %>% 
+  mutate(etiquetas = str_c(respuesta, round(porcentaje*100,1), "%", sep = " "))
+
+base_graph %>% 
+  ggplot(mapping = aes(x = pais, y = porcentaje, fill = categoria, alpha = respuesta)) +
+  geom_col(color = "white", show.legend = F) +
+  labs(title = "Proporción de respuesta a ¿como va a estar la economía\nen los proximos 12 meses?",
+       x = NULL,
+       y = "Porcentaje") +
+  scale_fill_manual(values = c("darkgreen", "darkblue", "darkred")) +
+  scale_alpha_manual(values = alpha_vals) +
+  geom_text(
+    aes(label = etiquetas),
+    position = position_stack(vjust = 0.70),
+    col = 'white',
+    size = 3,
+    fontface = 'bold',
+    show.legend = F
+  ) +
+  theme_test() +
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        plot.subtitle = element_text(hjust = 0.5, size = 8),
+        plot.caption = element_text(size=6, hjust=0.0, face="italic", color="black"),
+        axis.text.x = element_text(size = 11, angle = 0),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_text(size = 9),
+        axis.title.x = element_text(size = 7),
+        legend.title = element_text(size=7, hjust = 0.5), 
+        legend.text = element_text(size=6),
+        legend.position = "none")
+  
+
+
+```
+
+## Obtención y procesamiento de la base
+
+La base que utilizamos para este ejemplo es una encuesta muy utilizada en estudios de ciencia política y opinión pública, para descargarla accede al link señalado en la parte superior derecha de este documento (<span style="color:blue;">***Datos Latinobarometro***</span>) el cual te redirigirá a la página de Latinobarometro donde se encuentran los resultados de las encuestas en diferentes formatos. En este caso descargue la versión de **Stata**, lo único que debes hacer una vez descargado es extraer los archivos y asegurarte de que el documento *Latinobarometro_2023_Esp_Stata_v1_0.dta* se encuentre en tu directorio de trabajo.
+
+### Cargando la base a RStudio
+
+Una vez tengas la base en tu directorio de trabajo, debemos cargarla a RStudio con el paquete **haven**, el cual permite cargar bases en formato **.dta**
+
+```{r}
+
+rm(list = ls()) # Nos aseguramos de limpiar todo el ambiente de trabajo
+
+library(haven) # Activamos el paquete 'haven' si es la primer vez que lo usas 
+               # asegurate de instalarlo con el comando install.package("haven") 
+
+base <- read_dta("Latinobarometro_2023_Esp_Stata_v1_0.dta")
+
+```
+
+Ya cargada nuestra base, debemos aplicar algunas transformaciones antes de generar el gráfico. Lo primero es filtrar por aquellos países que nos interesan, en este caso yo elegí a México y Colombia, la variable que tiene el identificador de los países es **idenpa**.\
+Para ver qué número corresponde a cada país ejecuta el siguiente comando:
+
+```{r}
+
+unique(base$idenpa)
+
+```
+
+Colombia tiene el código $170$ y México el $484$, con esos valores en mente aplicamos el filtro en una nueva base que se llame *base_graph* (lo del nombre es arbitrario, puedes ponerle el nombre que quieras), puedes usar el lenguaje matricial de R Base o a partir del paquete *dplyr* utilizar la función **filter**
+
+```{r}
+
+library(tidyverse)
+
+base_graph <- base[base$idenpa %in% c(170, 484), ] # Filtrado en R base
+
+base_graph <- base %>% 
+  filter(idenpa %in% c(170, 484))                  # Filtrado con la paqueteria dplyr de Tidyverse
+
+```
+
+La base filtrada debe tener una dimensión de 2400 filas por 274 variables.
+
+### Conteo de respuestas
+
+Lo que graficamos son porcentajes, por ello debemos calcular en cada país el porcentaje de personas que contestó cada una de las posibles respuestas. El código para realizar dicho calculo se muestra a continuación
+
+```{r}
+
+base_graph <- base_graph %>% 
+  group_by(idenpa, P7ST) %>% # Primero agrupamos por país y por la pregunta que almacena la respuesta (P7ST)
+  tally() %>%                # La función Tally nos da la frecuencia absoluta en una nueva columna de nombre 'n'
+  filter(P7ST > 0) %>%       # Filtramos la No respuesta
+  ungroup() %>%              # Desagrupamos para calcular los porcentajes o frecuencia relativa de cada país
+  group_by(idenpa) %>%       # Agrupamos por país
+  mutate(porcentaje = n/sum(n)) # Hacemos un calculo de proporción o de porcentaje
+
+head(base_graph)           # Vemos las primeras 10 filas de la base transformada
+
+```
+
+La base ahora tiene una dimensión de 10 filas por cuatro columnas (5 respuestas por cada uno de los dos países analizados) y en principio ya podríamos graficar, sin embargo, antes de eso debemos asegurarnos de que el gráfico respeto el orden subyacente de las respuestas. No queremos que **Mucho mejor** aparezca en medio de **Mucho peor** y **Un poco peor**. Además, el etiquetado es importante, como vemos en nuestra base solo tenemos números, por lo que tenemos que crear una variable que contenga las etiquetas y que adicionalmente contenga un orden. Para eso vamos a utilizar la función *case_when* con la cual generamos una etiqueta a partir de una condición lógica y la función *factor* con la cual convertimos la variable en una variable categórica con un orden específico.
+
+#### Variable con etiqueta de respuesta
+
+El siguiente código contiene las dos alternativas que puedes seguir para crear una variable que contenga la etiqueta de las respuestas a partir una evaluación lógica sobre la variable **P7ST**.
+
+```{r}
+
+base_graph$respuesta <- case_when(                 # Alternativa en R Base
+  base_graph$P7ST == 1~ "Mucho mejor",
+  base_graph$P7ST == 2~ "Un poco mejor",
+  base_graph$P7ST == 3~ "Igual",
+  base_graph$P7ST == 4~ "Un poco peor",
+  base_graph$P7ST == 5~ "Mucho peor")
+
+base_graph <- base_graph %>% 
+  mutate(respuesta = case_when(                 # Alternativa con Tidyverse
+    P7ST == 1~ "Mucho mejor",
+    P7ST == 2~ "Un poco mejor",
+    P7ST == 3~ "Igual",
+    P7ST == 4~ "Un poco peor",
+    P7ST == 5~ "Mucho peor"))
+
+
+```
+
+#### Variable categórica con orden especifico
+
+Cuando no se especifica un orden particular en una variable categórica, R organiza la variable de manera automática según el orden alfabético de la primera letra de cada valor posible, en este caso el orden que toma R seria **"I, M y U"**, esto no necesariamente es un problema, pero al momento de graficar, va a ordenar las barras de una forma difícil de interpretar como se ve en el siguiente gráfico. (No se preocupen por el código para generar el gráfico, en unos instantes analizaremos detalladamente el mismo)
+
+```{r}
+
+base_graph %>% 
+  ggplot(mapping = aes(x = idenpa, y = porcentaje, fill = respuesta)) +
+  geom_col()
+
+```
+Aparecen intercaladas las respuestas *Un poco mejor; Un poco peor* y *Mucho mejor; Mucho peor*, lo cual es incómodo para el receptor del mensaje, por ello la importancia de establecer un orden a partir de la función **factor**.\
+Esta función recibe por argumentos un vector que contiene todos los valores posibles, en nuestro caso la variable recién creada *respuesta*, un argumento *level* en el cual debe indicarse el orden de la variable y un argumento *label* que en este caso puede ser omitido pero cuya función es asignar la etiqueta que le corresponde a cada nivel. El número de argumentos en *level* y *label* debe coincidir con el total de valores únicos contenidos en la variable a transformar.
+
+```{r}
+
+base_graph$respuesta <- factor(base_graph$respuesta,
+  levels = c("Mucho mejor",
+             "Un poco mejor",
+             "Igual",
+             "Un poco peor",
+             "Mucho peor"),
+  labels = c("Mucho mejor",
+             "Un poco mejor",
+             "Igual",
+             "Un poco peor",
+             "Mucho peor"))
+
+```
+
+Realizada esta transformación, si volvemos a graficar ya no tenemos el solapamiento entre categorías divergentes, lo que permite interpretar el gráfico con mayor facilidad y concluir por ejemplo, que en Colombia la gente es mucho más pesimista respecto al comportamiento de la economía en los próximos 12 meses comparada con México.
+
+```{r}
+
+base_graph %>% 
+  ggplot(mapping = aes(x = idenpa, y = porcentaje, fill = respuesta)) +
+  geom_col()
+
+```
+
+### Detalles adicionales para empezar a graficar
+
+La estructura general del gráfio ya esta, ahora solo necesitamos ajustar algunos detalles para alcanzar el gráfico objetivo presentado en la introducción.
+
+#### Nombres de países
+
+Lo primero son los nombres de los países, al momento de filtrar la base lo hicimos a partir de un número que identifica a cada país, pero en el gráfico es necesario que aparezca legible el nombre de los países. En el siguiente código se muestran dos alternativas para crear una variable con nombre **país** que contenga **Colombia** o **México** según corresponda.
+
+```{r}
+
+base_graph$pais <- case_when(
+  base_graph$idenpa == 170 ~ "Colombia",
+  base_graph$idenpa == 484 ~ "México"
+)
+
+base_graph$pais <- ifelse(test = base_graph$idenpa == 170, 
+                          yes = "Colombia", 
+                          no = "México")
+
+```
+
+#### Variable de agregación superior
+
+La variable que queremos graficar presenta grados y es posible recategorizarla en 3 alternativas:
+
+- **Mejor**: Un poco mejor o Mucho mejor
+- **Peor**: Un poco peor o Mucho peor
+- **Igual**: Igual
+
+Debemos generar una variable que contenga esta información, es decir, que tenga el mismo valor según el listado anterior. La utilidad de ello está en reducir la cantidad de colores y utilizar el tono como una característica distintiva.
+Como la variable a partir de la cual creamos esta agregación tiene un orden especifico, es necesario que la variable agregada responda a la misma lógica de ordenamiento, por ello debemos utilizar nuevamente las funciones **case_when** y **factor**, en este caso las utilizare de manera simultánea para que se observen alternativas de uso.
+
+```{r}
+
+base_graph$categoria <- factor(case_when(
+  base_graph$respuesta == "Mucho mejor" ~ "Mejor",
+  base_graph$respuesta == "Un poco mejor" ~ "Mejor",
+  base_graph$respuesta == "Igual" ~ "Igual",
+  base_graph$respuesta == "Un poco peor" ~ "Peor",
+  base_graph$respuesta == "Mucho peor" ~ "Peor"),
+  levels = c("Mejor", "Igual", "Peor"),
+  labels = c("Mejor", "Igual", "Peor"))
+
+```
+
+
+#### Creación de etiquetas dentro del gráfico
+
+Esto es opcional, creo que en esta ocasión resulta cómodo poner la etiqueta dentro de los recuadros en lugar de que aparezcan afuera del gráfico como lo hace el R por defecto. Para ello debemos crear el texto que queremos que aparezca dentro del gráfico.\
+Las funciones de texto de dplyr empiezan por **str_** en este caso queremos pegar texto por lo que utilizaremos la función **str_c**, otra alternativa es utilizar la función **paste**, ambas tienen la misma estructura y se presentan a continuación
+
+```{r}
+
+base_graph <- base_graph %>% 
+  mutate(etiquetas = str_c(respuesta, 
+                           round(porcentaje*100,1), 
+                           "%", 
+                           sep = " "))
+
+base_graph$etiqueta_paste <- paste(base_graph$respuesta, 
+                                   round(base_graph$porcentaje*100, 1), 
+                                   "%", 
+                                   sep = " ")
+
+
+base_graph$etiquetas == base_graph$etiqueta_paste # Vemos que los resultados mediante ambas funciones son identicos
+
+```
+## Gráfico con ggplot()
+
+**ggplot()** es la función para gráficar de **tidyverse**, es sumamente flexible e intuitiva, si no entiendes al inicio no te abrumes, es cuestión de practica.\
+Esta función necesita una base de datos (un objeto tipo dataframe o tibble) y la asignación de características a partir de variables. Las características esenciales son los ejes (eje x o eje horizontal y eje y o eje vertical), despues podemos asignar características de forma, color y tamaño depeniendo del gráfico que queramos realizar.
+
+#### Definición de ejes
+
+Nuestro gráfico tiene a los países en el eje x y el porcentaje de respuesta en el eje y, con esto podemos empezar a realizar el boceto de nuestro gráfico. Todas las características a partir de las cuales deseamos que nuestro gráfico tenga un comportamiento diferenciado según ciertos valores de nuestra base de datos, deben ir dentro del paréntesis **aes(...)**.
+Al estar graficando porcentajes según país, lo máximo para cada país es $100\%$ o la unidad en términos de proporciones, como no hemos indicado que esas barras deben rellenarse a partir de cierto criterio, aparecen dos barras grises que alcanzan el valor de 1.
+
+```{r}
+
+base_graph %>% 
+  ggplot(mapping = aes(x = pais, y = porcentaje)) +
+  geom_col()
+
+```
+
+#### Incorporación de colores
+
+La barra representa el $100\%$ o la totalidad de las respuestas, para rellenarlas en función del tipo de respuesta debemos añadir un nuevo argumento dentro del **aes(...)** en este caso el argumento **fill** que al español traduce relleno. Este punto es crucial, en lugar de utilizar la variable de respuestas con las 5 alternativas, utilizaremos la variable agregada a tres categorías que creamos anteriormente, para de esa manera reducir el número de colores y que quede claro que verde son expectativas de <span style="color:darkgreen;">***Mejor***</span>, rojo son expectativas de <span style="color:darkred;">***Peor***</span> y azul son expectativas de que todo sigue <span style="color:darkblue;">***Igual***</span>.
+
+```{r}
+
+base_graph %>% 
+  ggplot(mapping = aes(x = pais, y = porcentaje, fill = categoria)) +
+  geom_col() +
+  scale_fill_manual(values = c("darkgreen", "darkblue", "darkred"))
+
+```
+
+#### Incorporación de tonalidades
+
+Una buena visualización da un mensaje claro pero pierde la menor cantidad de información posible, acá vemos que en Colombia hay más gente que cree que la economía va a ir mal en comparación con la gente que lo cree en México, sin embargo, del procesamiento de la base sabemos que en ese grupo rojo, hay gente que cree que va a ir mucho peor y hay otra que cree que va a ir apenas peor, casi siempre esas graduaciones importan.\
+Debemos incorporar la característica de tonalidad o transparencia para que esa graduación este presente y no se pierda información valiosa, el argumento a incorporar dentro del **aes(...)** es **alpha**.
+
+```{r}
+#| warning: false
+
+base_graph %>% 
+  ggplot(mapping = aes(x = pais, y = porcentaje, fill = categoria, alpha = respuesta)) +
+  geom_col() +
+  scale_fill_manual(values = c("darkgreen", "darkblue", "darkred"))
+
+```
+
+En el gráfico vemos que la transparencia que coloca el R es arbitraria, pero así como seleccionamos los colores podemos seleccionar el grado de transparencia, el valor de 1 es el color completamente nítido y con valores entre 0 y 1 es posible obtener grados de transparencia. Note en el código de abajo que es necesario definir un valor de transparencia por cada elemento dentro el grupo agregado, según nuestro ejemplo hay dos respuestas posibles en *Mejor*, una en *Igual* y dos en *Peor*, por lo que debemos definir dos grados de transparencia para *Mejor*, uno para *Igual* y dos para *Peor*.
+
+```{r}
+
+alpha_max <- 1
+alpha_min <- 0.8
+alpha_vals <- c(seq(alpha_max, alpha_min, length.out = 2), # Tonalidades de Mejor
+                alpha_min,                                 # Tonalidad de Igual
+                seq(alpha_min, alpha_max, length.out = 2)) # Tonalidad de Peor
+
+base_graph %>% 
+  ggplot(mapping = aes(x = pais, y = porcentaje, fill = categoria, alpha = respuesta)) +
+  geom_col() +
+  scale_fill_manual(values = c("darkgreen", "darkblue", "darkred")) +
+  scale_alpha_manual(values = alpha_vals)
+
+  
+
+
+```
+
+#### Incorporación de texto dentro del gráfico
+
+Vemos que la lectura de las etiquetas a la derecha empieza a ser compleja al tener que combinar dos dimensiones de etiquetado, por ello es conveniente incorporar el texto en las barras.
+Hay varias maneras de incorporar texto, en este caso lo vamos a hacer con la función **geom_text**, utilizando la variable de **etiquetas** definida en pasos anteriores.
+
+```{r}
+
+base_graph %>% 
+  ggplot(mapping = aes(x = pais, y = porcentaje, fill = categoria, alpha = respuesta)) +
+  geom_col(show.legend = F) +
+  scale_fill_manual(values = c("darkgreen", "darkblue", "darkred")) +
+  scale_alpha_manual(values = alpha_vals) +
+  geom_text(
+    mapping = aes(label = etiquetas),           # la etiqueta es una carcteristica diferenciada por tipo de respuesta por ello va dentro del aes.
+    position = position_stack(vjust = 0.70),    # con esto centramos la etiqueta
+    col = 'white',                              # color de la etiqueta
+    size = 3,                                   # Tamaño de la letra
+    fontface = 'bold',                          # Letra en negrita 
+    show.legend = F)                            # para quitar las etiquetas de la derecha
+
+
+
+```
+
+#### Otros detalles
+
+Ya obtuvimos en gran medida lo que queríamos, acá solo voy a agregar algunos comandos para mejorar la estética del gráfico:
+
+- Bordes entre las barras
+- Titulo
+- Un cambio en la escala del eje y 
+- Quitar el titulo 'pais' del eje x 
+- Cambiar el fondo a partir de un nuevo *theme()*
+
+```{r}
+
+base_graph %>% 
+  ggplot(mapping = aes(x = pais, y = porcentaje, fill = categoria, alpha = respuesta)) +
+  geom_col(color = "white",                                                        # Bordes entre las barras
+           show.legend = F) +
+  labs(title = "Proporción de respuestas a:\n¿como va a estar la economía en los proximos 12 meses?", # Titulo
+       subtitle = "Comparación entre Colombia y México",
+       caption = "Fuente: Elaboración propia en base a Latinobarometro - 2023",
+       x = NULL,                                                         # Quitar el nombre 'pais' del eje x
+       y = "Porcentaje"                                                  # Renombrar el eje y
+       ) +
+  scale_fill_manual(values = c("darkgreen", "darkblue", "darkred")) +
+  scale_alpha_manual(values = alpha_vals) +
+  scale_y_continuous(n.breaks = 10) +                                   # Cambio en la escala del eje y
+  geom_text(
+    aes(label = etiquetas),
+    position = position_stack(vjust = 0.70),
+    col = 'white',
+    size = 3,
+    fontface = 'bold',
+    show.legend = F
+  ) +
+  theme_test() +                                                                 # Nuevo theme()
+  theme(plot.title = element_text(hjust = 0.5, size = 12),
+        plot.subtitle = element_text(hjust = 0.5, size = 10, face = "bold"),
+        plot.caption = element_text(size=8, hjust=0.0, face="italic", color="black"),
+        axis.text.x = element_text(size = 11, angle = 0),
+        axis.text.y = element_text(size = 8),
+        axis.title.y = element_text(size = 9),
+        axis.title.x = element_text(size = 7),
+        legend.title = element_text(size=7, hjust = 0.5), 
+        legend.text = element_text(size=6),
+        legend.position = "none")
+  
+
+```
+
